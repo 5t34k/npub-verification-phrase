@@ -7,6 +7,8 @@ human-readable phrase such as:
 jacket toe tackle umbrella aim hurry
 ```
 
+[View live demo.](https://npub-phrase.5t34k.com/)
+
 The same npub always produces the same phrase. This lets two people confirm
 they are looking at the same key by comparing a handful of memorable words
 instead of reading out a 63-character `npub1…` string. It is the exact
