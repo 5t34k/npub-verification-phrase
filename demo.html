@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>npub verification phrase</title>
+<style>
+	:root { color-scheme: light dark; }
+	body {
+		font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+		max-width: 640px; margin: 0 auto; padding: 2.5rem 1.25rem; line-height: 1.5;
+	}
+	h1 { font-size: 1.4rem; margin: 0 0 .25rem; }
+	p.sub { margin: 0 0 1.75rem; opacity: .7; font-size: .95rem; }
+	label { display: block; font-size: .8rem; text-transform: uppercase; letter-spacing: .04em; opacity: .7; margin-bottom: .4rem; }
+	textarea, select {
+		font: inherit; width: 100%; box-sizing: border-box; padding: .6rem .7rem;
+		border: 1px solid color-mix(in srgb, currentColor 25%, transparent);
+		border-radius: 8px; background: transparent; color: inherit;
+	}
+	textarea { resize: vertical; min-height: 4.5rem; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .85rem; word-break: break-all; }
+	.row { display: flex; gap: 1rem; align-items: end; margin-top: 1rem; }
+	.row > div:first-child { flex: 1; }
+	.phrase {
+		margin-top: 1.75rem; padding: 1.25rem 1.4rem; border-radius: 12px;
+		background: color-mix(in srgb, currentColor 7%, transparent);
+		font-size: 1.5rem; font-weight: 600; letter-spacing: .01em; min-height: 1.5em;
+	}
+	.phrase.empty { font-weight: 400; font-size: 1rem; opacity: .5; }
+	.meta { margin-top: 1rem; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .72rem; opacity: .55; word-break: break-all; }
+	.err { color: #c0392b; }
+	footer { margin-top: 2.5rem; font-size: .78rem; opacity: .55; }
+	code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+</style>
+</head>
+<body>
+	<h1>npub verification phrase</h1>
+	<p class="sub">Turn a Nostr public key into a few memorable words. The same npub always gives the same phrase.</p>
+
+	<div>
+		<label for="npub">npub (or 64-char hex pubkey)</label>
+		<textarea id="npub" spellcheck="false" placeholder="npub1...">npub1x5t34kxd79m657qcuwp4zrypy9t8t4e6yks5zapjvau29t0xvgaqakh2p2</textarea>
+	</div>
+
+	<div class="row">
+		<div>
+			<label for="count">Words</label>
+			<select id="count">
+				<option>3</option><option>4</option><option>5</option>
+				<option selected>6</option><option>7</option><option>8</option>
+				<option>9</option><option>10</option><option>11</option><option>12</option>
+			</select>
+		</div>
+	</div>
+
+	<div id="phrase" class="phrase empty">Enter an npub above.</div>
+	<div id="meta" class="meta"></div>
+
+	<footer>
+		Algorithm: <code>npub &rarr; bech32 decode &rarr; SHA-256(pubkey bytes) &rarr; BIP-39 words</code>.
+		Matches Nowhere exactly. See <code>README.md</code>.
+	</footer>
+
+<script type="module">
+import { nip19 } from 'https://esm.sh/nostr-tools@2.23.3';
+import { WORDLIST } from './wordlist.js';
+
+function hexToBytes(hex) {
+	const bytes = new Uint8Array(hex.length / 2);
+	for (let i = 0; i < hex.length; i += 2) bytes[i / 2] = parseInt(hex.slice(i, i + 2), 16);
+	return bytes;
+}
+
+function npubToPubkeyHex(input) {
+	const v = input.trim();
+	if (/^[0-9a-fA-F]{64}$/.test(v)) return v.toLowerCase();
+	const decoded = nip19.decode(v);
+	if (decoded.type !== 'npub') throw new Error('Expected an npub, got ' + decoded.type);
+	return decoded.data;
+}
+
+async function computeFingerprint(pubkeyHex) {
+	const digest = await crypto.subtle.digest('SHA-256', hexToBytes(pubkeyHex));
+	return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+function computeVerificationPhrase(fingerprint, wordCount) {
+	const clamped = Math.max(3, Math.min(12, wordCount));
+	const totalBits = clamped * 11;
+	const hex = fingerprint.slice(0, Math.ceil(totalBits / 4));
+	const words = [];
+	let bitBuffer = 0, bitsInBuffer = 0, hexIndex = 0;
+	for (let i = 0; i < clamped; i++) {
+		while (bitsInBuffer < 11 && hexIndex < hex.length) {
+			bitBuffer = (bitBuffer << 4) | parseInt(hex[hexIndex], 16);
+			bitsInBuffer += 4; hexIndex++;
+		}
+		const shift = bitsInBuffer - 11;
+		const index = (bitBuffer >> shift) & 0x7ff;
+		bitsInBuffer -= 11;
+		bitBuffer &= (1 << bitsInBuffer) - 1;
+		words.push(WORDLIST[index]);
+	}
+	return words.join(' ');
+}
+
+const npubEl = document.getElementById('npub');
+const countEl = document.getElementById('count');
+const phraseEl = document.getElementById('phrase');
+const metaEl = document.getElementById('meta');
+
+async function update() {
+	const raw = npubEl.value.trim();
+	if (!raw) {
+		phraseEl.className = 'phrase empty';
+		phraseEl.textContent = 'Enter an npub above.';
+		metaEl.textContent = '';
+		return;
+	}
+	try {
+		const pubkeyHex = npubToPubkeyHex(raw);
+		const fingerprint = await computeFingerprint(pubkeyHex);
+		const phrase = computeVerificationPhrase(fingerprint, parseInt(countEl.value, 10));
+		phraseEl.className = 'phrase';
+		phraseEl.textContent = phrase;
+		metaEl.innerHTML = 'pubkey&nbsp;&nbsp;' + pubkeyHex + '<br>sha256&nbsp;&nbsp;' + fingerprint;
+	} catch (e) {
+		phraseEl.className = 'phrase empty err';
+		phraseEl.textContent = 'Invalid npub: ' + e.message;
+		metaEl.textContent = '';
+	}
+}
+
+npubEl.addEventListener('input', update);
+countEl.addEventListener('change', update);
+update();
+</script>
+</body>
+</html>

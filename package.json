@@ -1,0 +1,16 @@
+{
+	"name": "npub-verification-phrase",
+	"version": "1.0.0",
+	"description": "Derive a short human-readable verification phrase from a Nostr npub, exactly as Nowhere does.",
+	"type": "module",
+	"main": "verification-phrase.js",
+	"exports": "./verification-phrase.js",
+	"scripts": {
+		"example": "node example.js"
+	},
+	"keywords": ["nostr", "npub", "verification", "phrase", "bip39", "fingerprint"],
+	"license": "MIT",
+	"dependencies": {
+		"nostr-tools": "^2.0.0"
+	}
+}
